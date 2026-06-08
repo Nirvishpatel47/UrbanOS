@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UrbanOS • Gandhinagar • Citizen Safety Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap');
+        body { font-family: 'Inter', system_ui, sans-serif; }
+        .font-display { font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif; font-weight: 600; }
+    </style>
+</head>
+<body class="bg-slate-50">
+    <!-- Navbar -->
+    <nav class="bg-white border-b">
+        <div class="max-w-screen-2xl mx-auto px-8 py-5 flex justify-between items-center">
+            <div class="flex items-center gap-x-3">
+                <div class="w-9 h-9 bg-sky-600 text-white rounded-2xl flex items-center justify-center">
+                    <span class="font-display text-2xl font-bold tracking-tighter">U</span>
+                </div>
+                <div>
+                    <span class="font-display text-2xl font-semibold tracking-tighter">UrbanOS</span>
+                </div>
+            </div>
+            <div class="flex items-center gap-x-4 text-sm">
+                <a href="/dashboard" class="font-medium px-4 py-2 hover:bg-slate-100 rounded-3xl transition-colors">Live Dashboard</a>
+                <a href="/login" class="font-medium px-5 py-2 border border-slate-300 rounded-3xl hover:bg-white transition-colors">Login</a>
+                <a href="/signin" class="font-semibold px-6 py-2 bg-sky-600 text-white rounded-3xl hover:bg-sky-700 transition-all">Register as Citizen</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero -->
+    <div class="max-w-screen-2xl mx-auto px-8 pt-16 pb-12">
+        <div class="max-w-3xl">
+            <div class="inline px-4 py-1.5 rounded-3xl bg-emerald-100 text-emerald-700 text-xs font-bold tracking-[1.5px]">GANDHINAGAR • GUJARAT</div>
+            
+            <h1 class="mt-6 font-display text-7xl tracking-tighter leading-none font-semibold">Your city.<br>Protected together.</h1>
+            
+            <p class="mt-6 max-w-lg text-2xl text-slate-600">Real-time multi-agent intelligence for floods, traffic &amp; citizen safety. Transparent. Open. For every resident.</p>
+            
+            <div class="mt-9 flex items-center gap-x-4">
+                <a href="/dashboard" 
+                   class="inline-flex items-center justify-center px-9 h-14 rounded-3xl bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white font-semibold text-lg transition-all">
+                    Open Live Dashboard
+                </a>
+                <a href="/report" 
+                   class="inline-flex items-center justify-center px-8 h-14 rounded-3xl border border-slate-300 hover:bg-white font-semibold text-lg transition-all">
+                    Report an Issue
+                </a>
+            </div>
+            
+            <div class="mt-5 text-xs text-slate-500 flex items-center gap-x-2">
+                <div class="flex -space-x-1">
+                    <div class="w-5 h-5 bg-emerald-400 border border-white rounded-full"></div>
+                    <div class="w-5 h-5 bg-sky-400 border border-white rounded-full"></div>
+                    <div class="w-5 h-5 bg-violet-400 border border-white rounded-full"></div>
+                </div>
+                <span>12,480 citizens protected today</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Features -->
+    <div class="max-w-screen-2xl mx-auto px-8 pb-20">
+        <div class="grid md:grid-cols-3 gap-5">
+            <div class="bg-white border border-slate-200 rounded-3xl p-7">
+                <div class="text-4xl mb-4">🌊</div>
+                <div class="font-semibold text-xl tracking-tight">5 Specialized AI Agents</div>
+                <p class="mt-3 text-slate-600">Flood, Panic Sentiment, Traffic, AI Governance, and Dispatch agents work together in real time using live sensor + citizen data.</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-3xl p-7">
+                <div class="text-4xl mb-4">🗺️</div>
+                <div class="font-semibold text-xl tracking-tight">Live Interactive Map</div>
+                <p class="mt-3 text-slate-600">Color-coded zones by danger level. Click any area to see exactly what each agent computed and the official recommendation.</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-3xl p-7">
+                <div class="text-4xl mb-4">🚨</div>
+                <div class="font-semibold text-xl tracking-tight">Instant Geo-Targeted Alerts</div>
+                <p class="mt-3 text-slate-600">When risk crosses threshold, relevant citizens within radius automatically receive clear, actionable alerts via email and dashboard.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white border-t">
+        <div class="max-w-screen-2xl mx-auto px-8 py-8 text-center text-xs text-slate-500">
+            Completely open source for citizens • Data refreshes every 10 minutes • Built for transparency and trust
+        </div>
+    </div>
+</body>
+</html>

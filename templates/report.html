@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Report Incident • UrbanOS Gandhinagar</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50">
+    <div class="max-w-lg mx-auto pt-10 pb-16 px-5">
+        <div class="mb-8">
+            <a href="/dashboard" class="text-xs uppercase tracking-widest font-bold text-sky-600">← Back to Dashboard</a>
+            <h1 class="font-semibold text-3xl tracking-tighter mt-3">Report an observation or emergency</h1>
+            <p class="text-slate-600 mt-2">Your message helps the AI agents detect rising panic or local issues faster.</p>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-3xl p-7 shadow-sm">
+            <form id="report-form" class="space-y-6">
+                <div>
+                    <label class="text-xs font-bold tracking-widest text-slate-500 block mb-1.5">YOUR EMAIL (registered)</label>
+                    <input type="email" name="email" required class="w-full border px-4 h-11 rounded-2xl text-sm" placeholder="your@email.com">
+                </div>
+
+                <div>
+                    <label class="text-xs font-bold tracking-widest text-slate-500 block mb-1.5">WHAT ARE YOU SEEING?</label>
+                    <textarea name="text" required rows="4" 
+                              class="w-full border px-4 py-3 rounded-2xl text-sm resize-y min-h-[110px]"
+                              placeholder="Water logging starting near Sector-6 main road. 3 cars stuck. Rain is heavy."></textarea>
+                    <div class="text-[10px] text-slate-400 mt-1 px-1">Be as specific as possible. This goes directly to the Sentiment &amp; Flood agents.</div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-xs font-bold tracking-widest text-slate-500 block mb-1.5">LATITUDE</label>
+                        <input type="text" name="lat" id="lat" class="w-full border px-4 h-11 rounded-2xl text-sm font-mono" placeholder="23.2125">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold tracking-widest text-slate-500 block mb-1.5">LONGITUDE</label>
+                        <input type="text" name="lon" id="lon" class="w-full border px-4 h-11 rounded-2xl text-sm font-mono" placeholder="72.6337">
+                    </div>
+                </div>
+
+                <button type="button" onclick="useMyLocation()"
+                        class="text-xs flex items-center gap-x-2 text-emerald-700 font-medium hover:text-emerald-800">
+                    <span>📍</span> Use my current location
+                </button>
+
+                <button type="submit"
+                        class="w-full h-12 mt-2 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-bold tracking-wider text-sm rounded-3xl transition-all">
+                    SEND TO SIMULATION ENGINE
+                </button>
+            </form>
+        </div>
+
+        <div class="text-center text-xs text-slate-400 mt-8 max-w-xs mx-auto">
+            Messages are processed within seconds by our multi-agent system and may trigger targeted alerts.
+        </div>
+    </div>
+
+    <script>
+        function useMyLocation() {
+            const latEl = document.getElementById('lat');
+            const lonEl = document.getElementById('lon');
+            
+            if (!navigator.geolocation) {
+                alert('Geolocation not available');
+                return;
+            }
+            
+            navigator.geolocation.getCurrentPosition(pos => {
+                latEl.value = pos.coords.latitude.toFixed(6);
+                lonEl.value = pos.coords.longitude.toFixed(6);
+            }, () => alert('Unable to get location'));
+        }
+        
+        const form = document.getElementById('report-form');
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = form.querySelector('button[type="submit"]');
+            const origText = btn.innerHTML;
+            btn.innerHTML = 'SENDING TO AGENTS...';
+            btn.disabled = true;
+
+            const fd = new FormData(form);
+            
+            try {
+                const res = await fetch('/text', { method: 'POST', body: fd });
+                const data = await res.json();
+                
+                if (data.success) {
+                    form.reset();
+                    const successDiv = document.createElement('div');
+                    successDiv.className = 'mt-5 p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-2xl text-sm';
+                    successDiv.innerHTML = `✅ Thank you. Your report has been logged and is now influencing the live simulation. Agents will re-evaluate shortly.`;
+                    form.parentNode.appendChild(successDiv);
+                    
+                    setTimeout(() => {
+                        successDiv.style.transition = 'all .4s';
+                        successDiv.style.opacity = '0';
+                        setTimeout(() => successDiv.remove(), 300);
+                    }, 4200);
+                } else {
+                    alert('Failed to send report. Please try again.');
+                }
+            } catch (err) {
+                alert('Network issue. Your report could not be sent.');
+            } finally {
+                btn.innerHTML = origText;
+                btn.disabled = false;
+            }
+        });
+        
+        // Pre-fill demo location
+        window.onload = () => {
+            const lat = document.getElementById('lat');
+            const lon = document.getElementById('lon');
+            if (lat && !lat.value) lat.value = '23.2125';
+            if (lon && !lon.value) lon.value = '72.6337';
+        };
+    </script>
+</body>
+</html>

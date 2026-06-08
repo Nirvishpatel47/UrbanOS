@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login • UrbanOS Gandhinagar</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-100 flex items-center justify-center min-h-screen p-6">
+    <div class="w-full max-w-md">
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-12 h-12 bg-sky-600 text-white rounded-2xl mb-4">
+                <span class="font-bold text-3xl tracking-tighter">U</span>
+            </div>
+            <h1 class="text-3xl font-semibold tracking-tight">Welcome back</h1>
+            <p class="text-slate-600 mt-1">Sign in to report incidents or view personalized alerts</p>
+        </div>
+
+        <div class="bg-white border border-slate-200 shadow-xl shadow-slate-200/60 rounded-3xl p-8">
+            <form id="login-form" class="space-y-5">
+                <div>
+                    <label class="block text-xs font-semibold tracking-widest text-slate-500 mb-1.5">EMAIL ADDRESS</label>
+                    <input type="email" name="email" required 
+                           class="w-full border border-slate-300 focus:border-sky-400 transition-colors px-4 h-12 rounded-2xl text-sm outline-none" 
+                           placeholder="you@domain.com" value="citizen@example.com">
+                </div>
+                
+                <div>
+                    <label class="block text-xs font-semibold tracking-widest text-slate-500 mb-1.5">PASSWORD</label>
+                    <input type="password" name="password" required 
+                           class="w-full border border-slate-300 focus:border-sky-400 transition-colors px-4 h-12 rounded-2xl text-sm outline-none" 
+                           placeholder="••••••••" value="demo123">
+                </div>
+
+                <button type="submit" 
+                        class="w-full h-12 bg-sky-600 hover:bg-sky-700 active:bg-sky-800 transition-all text-white font-semibold rounded-3xl text-sm tracking-wider">
+                    SIGN IN SECURELY
+                </button>
+            </form>
+
+            <div class="text-center mt-6 text-xs">
+                <span class="text-slate-500">New to UrbanOS?</span> 
+                <a href="/signin" class="font-semibold text-sky-600 hover:underline">Create citizen account</a>
+            </div>
+        </div>
+
+        <div class="text-center mt-6 text-[10px] text-slate-400">
+            Rate limited • Secure JWT authentication
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('login-form');
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = form.querySelector('button');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = 'VERIFYING...';
+            btn.disabled = true;
+
+            const formData = new FormData(form);
+            
+            try {
+                const res = await fetch('/login', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    localStorage.setItem('urbanos_token', data.token);
+                    localStorage.setItem('urbanos_user', JSON.stringify(data.user));
+                    
+                    // Success toast
+                    const toast = document.createElement('div');
+                    toast.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-6 py-3 rounded-3xl text-sm shadow-xl flex items-center gap-x-2';
+                    toast.innerHTML = `✅ Login successful. Redirecting to dashboard...`;
+                    document.body.appendChild(toast);
+                    
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 850);
+                } else {
+                    alert(data.message || 'Login failed. Please check credentials.');
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                alert('Connection error. Please try again.');
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        });
+        
+        // Demo hint
+        console.log('%c[UrbanOS] Demo credentials pre-filled: citizen@example.com / demo123', 'color:#94a3b8');
+    </script>
+</body>
+</html>

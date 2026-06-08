@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Join UrbanOS • Gandhinagar</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 flex items-center justify-center min-h-screen p-6">
+    <div class="w-full max-w-md">
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-12 h-12 bg-emerald-600 text-white rounded-2xl mb-4">
+                <span class="font-bold text-3xl tracking-tighter">U</span>
+            </div>
+            <h1 class="text-3xl font-semibold tracking-tight">Become a protected citizen</h1>
+            <p class="text-slate-600 mt-1 text-sm">Receive targeted safety alerts for your area</p>
+        </div>
+
+        <div class="bg-white border border-slate-200 shadow-xl shadow-slate-200/60 rounded-3xl p-8">
+            <form id="signin-form" class="space-y-5">
+                <div>
+                    <label class="block text-xs font-semibold tracking-widest text-slate-500 mb-1.5">EMAIL ADDRESS</label>
+                    <input type="email" name="email" required 
+                           class="w-full border border-slate-300 focus:border-emerald-400 transition-colors px-4 h-12 rounded-2xl text-sm outline-none" 
+                           placeholder="you@example.com">
+                </div>
+                
+                <div>
+                    <label class="block text-xs font-semibold tracking-widest text-slate-500 mb-1.5">CREATE PASSWORD</label>
+                    <input type="password" name="password" required minlength="6"
+                           class="w-full border border-slate-300 focus:border-emerald-400 transition-colors px-4 h-12 rounded-2xl text-sm outline-none" 
+                           placeholder="At least 6 characters">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold tracking-widest text-slate-500 mb-1.5">YOUR LATITUDE</label>
+                        <input type="text" name="lat" id="lat" required 
+                               class="w-full border border-slate-300 focus:border-emerald-400 transition-colors px-4 h-12 rounded-2xl text-sm outline-none font-mono" 
+                               placeholder="23.2156">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold tracking-widest text-slate-500 mb-1.5">YOUR LONGITUDE</label>
+                        <input type="text" name="lon" id="lon" required 
+                               class="w-full border border-slate-300 focus:border-emerald-400 transition-colors px-4 h-12 rounded-2xl text-sm outline-none font-mono" 
+                               placeholder="72.6369">
+                    </div>
+                </div>
+
+                <button type="button" onclick="getCurrentLocation()"
+                        class="w-full text-xs py-2.5 flex items-center justify-center gap-x-2 text-emerald-700 hover:text-emerald-800 font-medium">
+                    <span>📍</span> 
+                    <span>USE MY CURRENT LOCATION (recommended)</span>
+                </button>
+
+                <button type="submit" 
+                        class="mt-2 w-full h-12 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 transition-all text-white font-semibold rounded-3xl text-sm tracking-wider">
+                    CREATE ACCOUNT &amp; ACTIVATE ALERTS
+                </button>
+            </form>
+
+            <div class="text-center mt-6 text-xs text-slate-500">
+                Already registered? <a href="/login" class="font-semibold text-emerald-600">Sign in here</a>
+            </div>
+        </div>
+        
+        <div class="text-center mt-5 text-[10px] text-slate-400 max-w-xs mx-auto">
+            Your location helps us send you only the most relevant alerts for your neighborhood.
+        </div>
+    </div>
+
+    <script>
+        function getCurrentLocation() {
+            const latInput = document.getElementById('lat');
+            const lonInput = document.getElementById('lon');
+            const btns = document.querySelectorAll('button');
+            
+            if (!navigator.geolocation) {
+                alert('Geolocation is not supported by your browser. Please enter coordinates manually.');
+                return;
+            }
+            
+            btns.forEach(b => b.disabled = true);
+            
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    latInput.value = position.coords.latitude.toFixed(6);
+                    lonInput.value = position.coords.longitude.toFixed(6);
+                    btns.forEach(b => b.disabled = false);
+                    
+                    // subtle success
+                    latInput.style.borderColor = '#10b981';
+                    lonInput.style.borderColor = '#10b981';
+                    setTimeout(() => {
+                        latInput.style.borderColor = '';
+                        lonInput.style.borderColor = '';
+                    }, 1800);
+                },
+                (error) => {
+                    btns.forEach(b => b.disabled = false);
+                    alert('Could not get location. Please allow location access or enter manually.');
+                },
+                { enableHighAccuracy: true, timeout: 8000 }
+            );
+        }
+        
+        const form = document.getElementById('signin-form');
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = form.querySelector('button[type="submit"]');
+            const orig = btn.innerHTML;
+            btn.innerHTML = 'CREATING YOUR ACCOUNT...';
+            btn.disabled = true;
+
+            const formData = new FormData(form);
+            
+            try {
+                const res = await fetch('/signin', { method: 'POST', body: formData });
+                const data = await res.json();
+                
+                if (data.success) {
+                    localStorage.setItem('urbanos_token', data.token || '');
+                    localStorage.setItem('urbanos_user', JSON.stringify(data.user || {}));
+                    
+                    const toast = document.createElement('div');
+                    toast.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-3.5 rounded-3xl shadow-xl text-sm flex items-center gap-x-3';
+                    toast.innerHTML = `🎉 Welcome! Your account is active. You will now receive relevant alerts.`;
+                    document.body.appendChild(toast);
+                    
+                    setTimeout(() => window.location.href = '/dashboard', 1400);
+                } else {
+                    alert(data.message || 'Registration failed. Please try again.');
+                    btn.innerHTML = orig;
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                alert('Network error during registration.');
+                btn.innerHTML = orig;
+                btn.disabled = false;
+            }
+        });
+        
+        // Pre-fill demo coords for Gandhinagar center
+        window.onload = () => {
+            const lat = document.getElementById('lat');
+            const lon = document.getElementById('lon');
+            if (!lat.value) lat.value = '23.2156';
+            if (!lon.value) lon.value = '72.6369';
+        };
+    </script>
+</body>
+</html>
