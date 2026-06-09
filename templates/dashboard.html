@@ -188,248 +188,924 @@
     </footer>
 
     <div id="zone-modal" onclick="if (event.target.id === 'zone-modal') closeModal()" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4">
-        <div onclick="event.stopImmediatePropagation()" class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden">
-            <div id="modal-content"></div>
+        <div onclick="event.stopImmediatePropagation()" class="bg-white w-full max-w-5xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+            <div id="modal-content" class="overflow-y-auto"></div>
         </div>
     </div>
 
     <script>
-    let zonesData = [];
-    let map = null;
-    let zoneCircles = [];
-    let sseConnection = null;
+let zonesData = [];
+let map = null;
+let zoneCircles = [];
+let sseConnection = null;
 
-    // Repopulated missing agent states
-    const agents = [
-        { id: 'data', short: 'Data Collected', icon: '📡', color: '#64748b' },
-        { id: 'flood', short: 'Flood Agent', icon: '🌊', color: '#0ea5e9' },
-        { id: 'sentiment', short: 'Sentiment Agent', icon: '🧠', color: '#8b5cf6' },
-        { id: 'mobility', short: 'Traffic Agent', icon: '🚦', color: '#f59e0b' },
-        { id: 'ai', short: 'AI Output', icon: '🤖', color: '#ec4899' },
-        { id: 'dispatch', short: 'Dispatch', icon: '🚨', color: '#ef4444' },
-        { id: 'final', short: 'Final Output', icon: '✅', color: '#10b981' }
-    ];
+const agents = [
+    { id: 'data', short: 'Data Collected', icon: '📡', color: '#64748b' },
+    { id: 'flood', short: 'Flood Agent', icon: '🌊', color: '#0ea5e9' },
+    { id: 'sentiment', short: 'Sentiment Agent', icon: '🧠', color: '#8b5cf6' },
+    { id: 'mobility', short: 'Traffic Agent', icon: '🚦', color: '#f59e0b' },
+    { id: 'ai', short: 'AI Output', icon: '🤖', color: '#ec4899' },
+    { id: 'dispatch', short: 'Dispatch', icon: '🚨', color: '#ef4444' },
+    { id: 'final', short: 'Final Output', icon: '✅', color: '#10b981' }
+];
 
-    function initializeTailwind() {
-        tailwind.config = { theme: { extend: { fontFamily: { 'display': ['Space Grotesk', 'Inter', 'system-ui', 'sans-serif'] } } } };
-    }
-
-    function safeNum(val, fallback = 0) { return (typeof val === 'number' && !isNaN(val)) ? val : fallback; }
-
-    function getAlertColor(level, metricsSum = null) {
-        if (metricsSum === 0) return { bg: 'bg-slate-100', text: 'text-slate-500', border: 'border-slate-300', hex: '#94a3b8' }; // Gray out uncalculated zones
-        if (level === 'SAFE') return { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200', hex: '#10b981' };
-        if (level === 'ELEVATED') return { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200', hex: '#f59e0b' };
-        if (level === 'WARNING') return { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200', hex: '#f97316' };
-        if (level === 'CRITICAL') return { bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-200', hex: '#ef4444' };
-        return { bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-200', hex: '#64748b' };
-    }
-
-    function renderAgentSteps() {
-        const container = document.getElementById('agent-steps');
-        container.innerHTML = '';
-        agents.forEach(agent => {
-            const step = document.createElement('div');
-            step.className = `agent-step flex-1 min-w-[110px] bg-white border border-slate-200 rounded-2xl p-3 text-center relative`;
-            step.id = `agent-step-${agent.id}`;
-            step.innerHTML = `<div class="flex justify-center mb-2"><div class="agent-icon border border-slate-200 bg-slate-50" style="color: ${agent.color}">${agent.icon}</div></div><div class="font-semibold text-xs tracking-tight leading-tight mb-1">${agent.short}</div><div class="text-[10px] text-slate-500 mb-2 h-4" id="agent-status-${agent.id}">Ready</div><div class="text-[10px] px-2 py-1 bg-slate-100 rounded-xl text-slate-600 min-h-[32px] flex items-center justify-center" id="agent-output-${agent.id}"><span class="opacity-60">—</span></div>`;
-            container.appendChild(step);
-        });
-    }
-
-    function updateAgentStep(agentId, status, output = '') {
-        const stepEl = document.getElementById(`agent-step-${agentId}`);
-        const statusEl = document.getElementById(`agent-status-${agentId}`);
-        const outputEl = document.getElementById(`agent-output-${agentId}`);
-        if (!stepEl || !statusEl || !outputEl) return;
-        stepEl.classList.remove('active', 'completed', 'border-emerald-300', 'border-sky-400');
-        if (status === 'processing') {
-            stepEl.classList.add('active', 'border-sky-400');
-            statusEl.innerHTML = `<span class="inline-flex items-center gap-x-1 text-sky-600"><span class="w-1.5 h-1.5 bg-sky-500 rounded-full animate-pulse"></span> Processing</span>`;
-            outputEl.innerHTML = `<span class="text-sky-600 text-xs">Analyzing...</span>`;
-        } else if (status === 'completed') {
-            stepEl.classList.add('completed', 'border-emerald-300');
-            statusEl.innerHTML = `<span class="text-emerald-600 font-medium">Complete</span>`;
-            if (output) outputEl.innerHTML = `<span class="text-emerald-700 text-xs font-medium">${output}</span>`;
-        }
-    }
-
-    function addLogLine(text, type = 'info') {
-        const log = document.getElementById('simulation-log');
-        const line = document.createElement('div');
-        line.className = `log-line py-0.5 ${type === 'warning' ? 'text-amber-400' : type === 'success' ? 'text-emerald-400' : 'text-emerald-300'}`;
-        const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        line.innerHTML = `<span class="text-emerald-600/70">[${time}]</span> ${text}`;
-        log.appendChild(line);
-        log.scrollTop = log.scrollHeight;
-    }
-
-    async function fetchZones() {
-        try {
-            const res = await fetch('/api/zones');
-            zonesData = await res.json();
-        } catch (e) { console.error("Failed to fetch zones:", e); zonesData = []; }
-    }
-
-    function connectRealtimePipeline() {
-        if (sseConnection) sseConnection.close();
-        sseConnection = new EventSource('/api/stream');
-        sseConnection.onopen = () => addLogLine("📡 Connected to simulation engine", "success");
-        sseConnection.onmessage = async function(event) {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.type === 'log') addLogLine(data.text, data.level === 'error' ? 'warning' : 'success');
-                else if (data.type === 'agent_step') updateAgentStep(data.agent, data.status, data.output);
-                else if (data.type === 'cycle_complete') {
-                    addLogLine(`✅ Cycle finished for ${data.zone}`, 'success');
-                    await fetchZones();
-                    renderZoneGrid();
-                    updateMapCircles();
-                    updateOverallStatus();
+function initializeTailwind() {
+    tailwind.config = {
+        theme: {
+            extend: {
+                fontFamily: {
+                    display: ['Space Grotesk', 'Inter', 'system-ui', 'sans-serif']
                 }
-            } catch (e) {}
+            }
+        }
+    };
+}
+
+function safeNum(val, fallback = 0) {
+    return (typeof val === 'number' && !isNaN(val)) ? val : fallback;
+}
+
+function safeValue(value) {
+    if (value === null || value === undefined) return 'N/A';
+    if (typeof value === 'object') return JSON.stringify(value, null, 2);
+    return value;
+}
+
+function formatKey(key) {
+    return key
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function getAlertColor(level, metricsSum = null) {
+
+    if (metricsSum === 0) {
+        return {
+            bg: 'bg-slate-100',
+            text: 'text-slate-500',
+            border: 'border-slate-300',
+            hex: '#94a3b8'
         };
     }
 
-    async function fetchApexCommanderDecision() {
-        addLogLine("🧠 Requesting global triage from Apex Commander...", "info");
-        try {
-            const res = await fetch('/api/apex-commander', { method: 'POST' });
-            const data = await res.json();
-            renderApexCommanderOutput(data);
-        } catch (err) {
-            addLogLine("Apex Commander evaluation failed.", "warning");
-        }
+    if (level === 'SAFE') {
+        return {
+            bg: 'bg-emerald-100',
+            text: 'text-emerald-700',
+            border: 'border-emerald-200',
+            hex: '#10b981'
+        };
     }
 
-    function renderApexCommanderOutput(plan) {
-        const priorityList = document.getElementById('ai-priority-list');
-        const routesList = document.getElementById('ai-routes-list');
-        const citizenList = document.getElementById('ai-citizen-list');
-
-        if (plan.city_wide_priority_execution) {
-            priorityList.innerHTML = plan.city_wide_priority_execution.map(action => 
-                `<div class="px-3 py-2 bg-slate-800/80 border border-slate-700/50 rounded-lg text-sky-50 border-l-2 border-l-sky-500">${action}</div>`
-            ).join('');
-        }
-
-        let routesHtml = '';
-        if (plan.blocked_routes && plan.blocked_routes.length > 0) {
-            routesHtml += `<div class="text-[10px] text-rose-400 mt-1 mb-1 font-bold">BLOCKED</div>` + plan.blocked_routes.map(r => `<div class="px-2 py-1.5 mb-1 bg-rose-950/30 text-rose-200 border border-rose-900/50 rounded text-[11px]">${r}</div>`).join('');
-        }
-        if (plan.approved_evacuation_routes && plan.approved_evacuation_routes.length > 0) {
-            routesHtml += `<div class="text-[10px] text-emerald-400 mt-3 mb-1 font-bold">APPROVED CORRIDORS</div>` + plan.approved_evacuation_routes.map(r => `<div class="px-2 py-1.5 mb-1 bg-emerald-950/30 text-emerald-200 border border-emerald-900/50 rounded text-[11px]">${r}</div>`).join('');
-        }
-        routesList.innerHTML = routesHtml || `<div class="px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg">No active route restrictions.</div>`;
-
-        if (plan.citizen_broadcast) {
-            citizenList.innerHTML = `<div class="px-4 py-3 bg-emerald-950/30 border border-emerald-800/50 rounded-lg text-emerald-50 leading-relaxed border-l-4 border-l-emerald-500">${plan.citizen_broadcast}</div>`;
-        }
-        addLogLine("Apex Commander applied new city directives", "success");
+    if (level === 'ELEVATED') {
+        return {
+            bg: 'bg-amber-100',
+            text: 'text-amber-700',
+            border: 'border-amber-200',
+            hex: '#f59e0b'
+        };
     }
 
-    function updateOverallStatus() {
-        if (!zonesData.length) return;
-        const scores = zonesData.map(z => safeNum(z.escalation_score));
-        const sumScore = scores.reduce((a, b) => a + b, 0);
-        const maxScore = Math.max(...scores);
-        const warningCount = zonesData.filter(z => z.alert_level !== 'SAFE').length;
-        
-        const pill = document.getElementById('overall-pill');
-        const text = document.getElementById('overall-text');
-
-        if (sumScore === 0) { pill.className = 'status-pill px-4 py-1 rounded-2xl font-bold text-sm bg-slate-100 text-slate-500'; text.textContent = 'Awaiting Telemetry'; pill.textContent = 'PENDING'; }
-        else if (maxScore >= 80) { pill.className = 'status-pill px-4 py-1 rounded-2xl font-bold text-sm bg-rose-100 text-rose-700'; text.textContent = 'Critical Disaster'; pill.textContent = 'CRITICAL'; }
-        else if (maxScore >= 65) { pill.className = 'status-pill px-4 py-1 rounded-2xl font-bold text-sm bg-orange-100 text-orange-700'; text.textContent = 'Multiple Zones Elevated'; pill.textContent = 'WARNING'; }
-        else if (warningCount > 0) { pill.className = 'status-pill px-4 py-1 rounded-2xl font-bold text-sm bg-amber-100 text-amber-700'; text.textContent = `${warningCount} Zone(s) Elevated`; pill.textContent = 'ELEVATED'; }
-        else { pill.className = 'status-pill px-4 py-1 rounded-2xl font-bold text-sm bg-emerald-100 text-emerald-700'; text.textContent = 'All Systems Nominal'; pill.textContent = 'SAFE'; }
-        
-        document.getElementById('avg-escalation').textContent = sumScore === 0 ? "0.0" : (sumScore / scores.length).toFixed(1);
-        document.getElementById('zones-attention').textContent = warningCount;
-
-        let highestLevel = sumScore === 0 ? 'PENDING' : 'SAFE';
-        const levels = ['SAFE', 'ELEVATED', 'WARNING', 'CRITICAL'];
-        if (sumScore !== 0) {
-            zonesData.forEach(z => { if (levels.indexOf(z.alert_level) > levels.indexOf(highestLevel)) highestLevel = z.alert_level; });
-        }
-        document.getElementById('active-policy-text').textContent = highestLevel;
+    if (level === 'WARNING') {
+        return {
+            bg: 'bg-orange-100',
+            text: 'text-orange-700',
+            border: 'border-orange-200',
+            hex: '#f97316'
+        };
     }
 
-    function renderZoneGrid() {
-        const container = document.getElementById('zone-grid');
-        container.innerHTML = '';
-        zonesData.forEach(zone => {
-            const metricsSum = safeNum(zone.flood_risk) + safeNum(zone.traffic_congestion) + safeNum(zone.panic_index) + safeNum(zone.escalation_score);
-            const colors = getAlertColor(zone.alert_level || 'SAFE', metricsSum);
-            const card = document.createElement('div');
-            const alertLabel = metricsSum === 0 ? 'PENDING' : (zone.alert_level || 'SAFE');
-            
-            card.className = `zone-card bg-white border ${colors.border} rounded-3xl p-5 cursor-pointer`;
-            card.innerHTML = `
-                <div class="flex justify-between items-start">
-                    <div><div class="font-semibold tracking-tight">${zone.name}</div><div class="text-[10px] text-slate-500 mt-0.5 font-mono">LAT: ${zone.latitude?.toFixed(4)} | LON: ${zone.longitude?.toFixed(4)}</div></div>
-                    <div class="${colors.bg} ${colors.text} text-xs font-bold px-3 py-px rounded-2xl">${alertLabel}</div>
+    if (level === 'CRITICAL') {
+        return {
+            bg: 'bg-rose-100',
+            text: 'text-rose-700',
+            border: 'border-rose-200',
+            hex: '#ef4444'
+        };
+    }
+
+    return {
+        bg: 'bg-slate-100',
+        text: 'text-slate-700',
+        border: 'border-slate-200',
+        hex: '#64748b'
+    };
+}
+
+function renderAgentSteps() {
+
+    const container = document.getElementById('agent-steps');
+    container.innerHTML = '';
+
+    agents.forEach(agent => {
+
+        const step = document.createElement('div');
+
+        step.className =
+            `agent-step flex-1 min-w-[110px] bg-white border border-slate-200 rounded-2xl p-3 text-center relative`;
+
+        step.id = `agent-step-${agent.id}`;
+
+        step.innerHTML = `
+            <div class="flex justify-center mb-2">
+                <div class="agent-icon border border-slate-200 bg-slate-50"
+                     style="color:${agent.color}">
+                    ${agent.icon}
                 </div>
-                <div class="mt-4"><div class="flex justify-between text-xs mb-1"><span class="text-slate-500 font-medium">Escalation</span><span class="font-mono font-semibold">${safeNum(zone.escalation_score).toFixed(1)}</span></div>
-                <div class="h-1.5 bg-slate-100 rounded-full"><div class="h-1.5 rounded-full" style="width:${Math.min(zone.escalation_score,100)}%; background:${colors.hex}"></div></div></div>
-                <div class="grid grid-cols-4 gap-2 mt-4 text-center">
-                    <div class="bg-slate-50 rounded-lg py-2"><div class="text-[9px] font-bold text-slate-400">FLOOD</div><div class="font-mono text-sm font-semibold">${safeNum(zone.flood_risk)}</div></div>
-                    <div class="bg-slate-50 rounded-lg py-2"><div class="text-[9px] font-bold text-slate-400">TRAFFIC</div><div class="font-mono text-sm font-semibold">${safeNum(zone.traffic_congestion)}</div></div>
-                    <div class="bg-slate-50 rounded-lg py-2"><div class="text-[9px] font-bold text-slate-400">PANIC</div><div class="font-mono text-sm font-semibold">${safeNum(zone.panic_index)}</div></div>
-                    <div class="bg-slate-50 rounded-lg py-2"><div class="text-[9px] font-bold text-slate-400">AQI</div><div class="font-mono text-sm font-semibold">${safeNum(zone.aqi_risk)}</div></div>
-                </div>`;
-            container.appendChild(card);
-        });
+            </div>
+
+            <div class="font-semibold text-xs tracking-tight leading-tight mb-1">
+                ${agent.short}
+            </div>
+
+            <div class="text-[10px] text-slate-500 mb-2 h-4"
+                 id="agent-status-${agent.id}">
+                 Ready
+            </div>
+
+            <div class="text-[10px] px-2 py-1 bg-slate-100 rounded-xl text-slate-600 min-h-[32px] flex items-center justify-center"
+                 id="agent-output-${agent.id}">
+                 <span class="opacity-60">—</span>
+            </div>
+        `;
+
+        container.appendChild(step);
+    });
+}
+
+function updateAgentStep(agentId, status, output = '') {
+
+    const stepEl = document.getElementById(`agent-step-${agentId}`);
+    const statusEl = document.getElementById(`agent-status-${agentId}`);
+    const outputEl = document.getElementById(`agent-output-${agentId}`);
+
+    if (!stepEl) return;
+
+    stepEl.classList.remove(
+        'active',
+        'completed',
+        'border-emerald-300',
+        'border-sky-400'
+    );
+
+    if (status === 'processing') {
+
+        stepEl.classList.add('active', 'border-sky-400');
+
+        statusEl.innerHTML = `
+            <span class="inline-flex items-center gap-x-1 text-sky-600">
+                <span class="w-1.5 h-1.5 bg-sky-500 rounded-full animate-pulse"></span>
+                Processing
+            </span>
+        `;
+
+        outputEl.innerHTML = `
+            <span class="text-sky-600 text-xs">
+                Analyzing...
+            </span>
+        `;
     }
 
-    function initializeMap() {
-        map = L.map(document.getElementById('leaflet-map'), { zoomControl: true, attributionControl: false }).setView([23.215, 72.645], 12.5);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    else if (status === 'completed') {
+
+        stepEl.classList.add('completed', 'border-emerald-300');
+
+        statusEl.innerHTML = `
+            <span class="text-emerald-600 font-medium">
+                Complete
+            </span>
+        `;
+
+        outputEl.innerHTML = `
+            <span class="text-emerald-700 text-xs font-medium">
+                ${output || 'Done'}
+            </span>
+        `;
     }
+}
 
-    function updateMapCircles() {
-        zoneCircles.forEach(c => map.removeLayer(c));
-        zoneCircles = [];
-        zonesData.forEach(zone => {
-            const metricsSum = safeNum(zone.flood_risk) + safeNum(zone.traffic_congestion) + safeNum(zone.panic_index) + safeNum(zone.escalation_score);
-            const colors = getAlertColor(zone.alert_level || 'SAFE', metricsSum);
-            const alertLabel = metricsSum === 0 ? 'PENDING' : (zone.alert_level || 'SAFE');
-            const circle = L.circle([zone.latitude, zone.longitude], { radius: 1300, fillColor: colors.hex, color: '#fff', weight: 2, fillOpacity: 0.28 }).addTo(map);
-            circle.bindPopup(`<div class="p-1"><strong>${zone.name}</strong> (${alertLabel})<br>Escalation: ${safeNum(zone.escalation_score)}<br>Flood: ${safeNum(zone.flood_risk)}% | AQI Risk: ${safeNum(zone.aqi_risk)}%</div>`);
-            zoneCircles.push(circle);
-        });
+function addLogLine(text, type = 'info') {
+
+    const log = document.getElementById('simulation-log');
+
+    const line = document.createElement('div');
+
+    line.className =
+        `log-line py-0.5 ${
+            type === 'warning'
+                ? 'text-amber-400'
+                : type === 'success'
+                ? 'text-emerald-400'
+                : 'text-emerald-300'
+        }`;
+
+    const time = new Date().toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+
+    line.innerHTML = `
+        <span class="text-emerald-600/70">
+            [${time}]
+        </span>
+        ${text}
+    `;
+
+    log.appendChild(line);
+
+    log.scrollTop = log.scrollHeight;
+}
+
+async function fetchZones() {
+
+    try {
+
+        const res = await fetch('/api/zones');
+
+        zonesData = await res.json();
+
+        console.log("Zones Loaded:", zonesData);
+
+    } catch (e) {
+
+        console.error("Failed to fetch zones:", e);
+
+        zonesData = [];
     }
+}
 
-    async function initializeDashboard() {
-        initializeTailwind();
-        await fetchZones();
-        renderAgentSteps();
-        renderZoneGrid();
-        updateOverallStatus();
-        initializeMap();
-        updateMapCircles();
-        connectRealtimePipeline();
+function renderDynamicFields(obj) {
 
-        window.runSimulationCycle = async function() {
-            addLogLine("🚀 Starting full simulation cycle...", "info");
-            try {
-                const res = await fetch('/api/run-simulation-cycle', { method: 'POST' });
-                const data = await res.json();
-                
-                if (data.success) {
-                    addLogLine(`✅ Cycle computed successfully`, "success");
-                    await fetchZones();
-                    renderZoneGrid();
-                    updateMapCircles();
-                    updateOverallStatus();
+    let html = '';
+
+    Object.entries(obj).forEach(([key, value]) => {
+
+        // Skip duplicated top fields
+        if ([
+            'name',
+            'latitude',
+            'longitude',
+            'alert_level'
+        ].includes(key)) {
+            return;
+        }
+
+        // ARRAYS
+        if (Array.isArray(value)) {
+
+            html += `
+                <div class="col-span-2 bg-slate-50 border border-slate-200 rounded-2xl p-4">
                     
-                    await fetchApexCommanderDecision();
-                }
-            } catch (err) { addLogLine("Simulation execution failed", "warning"); }
-        };
+                    <div class="text-sm font-bold text-slate-700 mb-3">
+                        ${formatKey(key)}
+                    </div>
+
+                    <div class="space-y-2">
+                        ${value.map(item => `
+                            <div class="bg-white border border-slate-200 rounded-xl p-3 text-sm leading-relaxed">
+                                ${item}
+                            </div>
+                        `).join('')}
+                    </div>
+
+                </div>
+            `;
+        }
+
+        // OBJECTS
+        else if (
+            typeof value === 'object' &&
+            value !== null
+        ) {
+
+            html += `
+                <div class="col-span-2 bg-slate-50 border border-slate-200 rounded-2xl p-4">
+
+                    <div class="text-sm font-bold text-slate-700 mb-4">
+                        ${formatKey(key)}
+                    </div>
+
+                    <div class="space-y-4">
+                        ${Object.entries(value).map(([subKey, subVal]) => {
+
+                            // nested object
+                            if (
+                                typeof subVal === 'object' &&
+                                subVal !== null
+                            ) {
+
+                                return `
+                                    <div class="bg-white border border-slate-200 rounded-2xl p-4">
+
+                                        <div class="font-semibold text-sky-700 mb-3">
+                                            ${formatKey(subKey)}
+                                        </div>
+
+                                        <div class="grid grid-cols-2 gap-3">
+                                            ${Object.entries(subVal).map(([deepKey, deepVal]) => `
+                                                <div class="bg-slate-50 rounded-xl p-3 border border-slate-100">
+
+                                                    <div class="text-[10px] uppercase tracking-wider text-slate-500 mb-1">
+                                                        ${formatKey(deepKey)}
+                                                    </div>
+
+                                                    <div class="font-semibold text-sm">
+                                                        ${safeValue(deepVal)}
+                                                    </div>
+
+                                                </div>
+                                            `).join('')}
+                                        </div>
+
+                                    </div>
+                                `;
+                            }
+
+                            return `
+                                <div class="flex items-center justify-between bg-white rounded-xl border border-slate-200 px-4 py-3">
+
+                                    <div class="text-sm text-slate-600">
+                                        ${formatKey(subKey)}
+                                    </div>
+
+                                    <div class="font-semibold text-sm text-slate-800">
+                                        ${safeValue(subVal)}
+                                    </div>
+
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+
+                </div>
+            `;
+        }
+
+        // SIMPLE VALUES
+        else {
+
+            html += `
+                <div class="bg-white border border-slate-200 rounded-2xl p-4">
+
+                    <div class="text-[10px] uppercase tracking-wider text-slate-500 mb-2">
+                        ${formatKey(key)}
+                    </div>
+
+                    <div class="text-base font-semibold text-slate-800 break-words">
+                        ${safeValue(value)}
+                    </div>
+
+                </div>
+            `;
+        }
+    });
+
+    return html;
+}
+
+function openZoneModal(zone) {
+
+    const modal = document.getElementById('zone-modal');
+    const content = document.getElementById('modal-content');
+
+    const metricsSum =
+        safeNum(zone.flood_risk) +
+        safeNum(zone.traffic_congestion) +
+        safeNum(zone.panic_index) +
+        safeNum(zone.escalation_score);
+
+    const colors = getAlertColor(zone.alert_level, metricsSum);
+
+    content.innerHTML = `
+        <div class="p-6 border-b border-slate-200 flex items-start justify-between">
+
+            <div>
+                <h2 class="text-3xl font-display tracking-tight">
+                    ${zone.name || 'Unknown Zone'}
+                </h2>
+
+                <div class="text-sm text-slate-500 mt-1">
+                    Gandhinagar Live Intelligence
+                </div>
+            </div>
+
+            <button onclick="closeModal()"
+                class="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700">
+                ✕
+            </button>
+        </div>
+
+        <div class="p-6">
+
+            <div class="mb-5">
+                <span class="${colors.bg} ${colors.text} px-4 py-2 rounded-2xl text-sm font-bold">
+                    ${zone.alert_level || 'UNKNOWN'}
+                </span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                ${renderDynamicFields(zone)}
+            </div>
+
+        </div>
+    `;
+
+    modal.classList.remove('hidden');
+}
+
+function closeModal() {
+    document.getElementById('zone-modal').classList.add('hidden');
+}
+
+function renderZoneGrid() {
+
+    const container = document.getElementById('zone-grid');
+
+    container.innerHTML = '';
+
+    zonesData.forEach(zone => {
+
+        const metricsSum =
+            safeNum(zone.flood_risk) +
+            safeNum(zone.traffic_congestion) +
+            safeNum(zone.panic_index) +
+            safeNum(zone.escalation_score);
+
+        const colors = getAlertColor(zone.alert_level, metricsSum);
+
+        const card = document.createElement('div');
+
+        card.className =
+            `zone-card bg-white border ${colors.border} rounded-3xl p-5 cursor-pointer`;
+
+        card.onclick = () => openZoneModal(zone);
+
+        card.innerHTML = `
+            <div class="flex justify-between items-start">
+
+                <div>
+                    <div class="font-semibold tracking-tight text-lg">
+                        ${zone.name || 'Unknown'}
+                    </div>
+
+                    <div class="text-[10px] text-slate-500 mt-1 font-mono">
+                        LAT ${zone.latitude || 'N/A'}
+                        |
+                        LNG ${zone.longitude || 'N/A'}
+                    </div>
+                </div>
+
+                <div class="${colors.bg} ${colors.text} px-3 py-1 rounded-2xl text-xs font-bold">
+                    ${zone.alert_level || 'UNKNOWN'}
+                </div>
+            </div>
+
+            <div class="mt-5">
+                <div class="flex justify-between text-xs mb-1">
+                    <span class="text-slate-500">
+                        Escalation
+                    </span>
+
+                    <span class="font-mono font-semibold">
+                        ${safeNum(zone.escalation_score)}
+                    </span>
+                </div>
+
+                <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div class="h-full rounded-full"
+                         style="
+                            width:${Math.min(safeNum(zone.escalation_score),100)}%;
+                            background:${colors.hex};
+                         ">
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 mt-4">
+
+                <div class="bg-slate-50 rounded-xl p-2">
+                    <div class="text-[10px] text-slate-500">
+                        Flood
+                    </div>
+
+                    <div class="font-bold">
+                        ${safeNum(zone.flood_risk)}
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 rounded-xl p-2">
+                    <div class="text-[10px] text-slate-500">
+                        Traffic
+                    </div>
+
+                    <div class="font-bold">
+                        ${safeNum(zone.traffic_congestion)}
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 rounded-xl p-2">
+                    <div class="text-[10px] text-slate-500">
+                        Panic
+                    </div>
+
+                    <div class="font-bold">
+                        ${safeNum(zone.panic_index)}
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 rounded-xl p-2">
+                    <div class="text-[10px] text-slate-500">
+                        AQI
+                    </div>
+
+                    <div class="font-bold">
+                        ${safeNum(zone.aqi_risk)}
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4 text-xs text-sky-600 font-medium">
+                Tap to view full intelligence →
+            </div>
+        `;
+
+        container.appendChild(card);
+    });
+}
+
+function initializeMap() {
+
+    map = L.map(
+        document.getElementById('leaflet-map'),
+        {
+            zoomControl: true,
+            attributionControl: false
+        }
+    ).setView([23.215, 72.645], 12.5);
+
+    L.tileLayer(
+        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+    ).addTo(map);
+}
+
+function updateMapCircles() {
+
+    zoneCircles.forEach(c => map.removeLayer(c));
+
+    zoneCircles = [];
+
+    zonesData.forEach(zone => {
+
+        const metricsSum =
+            safeNum(zone.flood_risk) +
+            safeNum(zone.traffic_congestion) +
+            safeNum(zone.panic_index) +
+            safeNum(zone.escalation_score);
+
+        const colors = getAlertColor(zone.alert_level, metricsSum);
+
+        const circle = L.circle(
+            [zone.latitude, zone.longitude],
+            {
+                radius: 1300,
+                fillColor: colors.hex,
+                color: '#fff',
+                weight: 2,
+                fillOpacity: 0.28
+            }
+        ).addTo(map);
+
+        circle.bindPopup(`
+            <div class="p-1">
+                <strong>${zone.name}</strong>
+                <br>
+
+                Alert:
+                ${zone.alert_level}
+
+                <br>
+
+                Escalation:
+                ${safeNum(zone.escalation_score)}
+            </div>
+        `);
+
+        circle.on('click', () => {
+            openZoneModal(zone);
+        });
+
+        zoneCircles.push(circle);
+    });
+}
+
+function connectRealtimePipeline() {
+
+    if (sseConnection) {
+        sseConnection.close();
     }
 
-    window.onload = initializeDashboard;
-    </script>
+    sseConnection = new EventSource('/api/stream');
+
+    sseConnection.onopen = () => {
+        addLogLine("📡 Connected to simulation engine", "success");
+    };
+
+    sseConnection.onmessage = async function(event) {
+
+        try {
+
+            const data = JSON.parse(event.data);
+
+            console.log("Realtime Event:", data);
+
+            if (data.type === 'log') {
+
+                addLogLine(
+                    data.text,
+                    data.level === 'error'
+                        ? 'warning'
+                        : 'success'
+                );
+            }
+
+            else if (data.type === 'agent_step') {
+
+                updateAgentStep(
+                    data.agent,
+                    data.status,
+                    data.output
+                );
+            }
+
+            else if (data.type === 'cycle_complete') {
+
+                addLogLine(
+                    `✅ Cycle finished for ${data.zone}`,
+                    'success'
+                );
+
+                await refreshDashboard();
+            }
+
+        } catch (e) {
+
+            console.error(e);
+        }
+    };
+}
+
+async function refreshDashboard() {
+
+    await fetchZones();
+
+    renderZoneGrid();
+
+    updateMapCircles();
+
+    updateOverallStatus();
+}
+
+function updateOverallStatus() {
+
+    if (!zonesData.length) return;
+
+    const scores =
+        zonesData.map(z => safeNum(z.escalation_score));
+
+    const sumScore =
+        scores.reduce((a, b) => a + b, 0);
+
+    const maxScore =
+        Math.max(...scores);
+
+    const warningCount =
+        zonesData.filter(
+            z => z.alert_level !== 'SAFE'
+        ).length;
+
+    document.getElementById('avg-escalation').textContent =
+        (sumScore / scores.length).toFixed(1);
+
+    document.getElementById('zones-attention').textContent =
+        warningCount;
+
+    const pill = document.getElementById('overall-pill');
+    const text = document.getElementById('overall-text');
+
+    if (maxScore >= 80) {
+
+        pill.className =
+            'status-pill px-4 py-1 rounded-2xl bg-rose-100 text-rose-700';
+
+        pill.textContent = 'CRITICAL';
+
+        text.textContent = 'Critical Disaster';
+    }
+
+    else if (maxScore >= 65) {
+
+        pill.className =
+            'status-pill px-4 py-1 rounded-2xl bg-orange-100 text-orange-700';
+
+        pill.textContent = 'WARNING';
+
+        text.textContent = 'Elevated Threat';
+    }
+
+    else {
+
+        pill.className =
+            'status-pill px-4 py-1 rounded-2xl bg-emerald-100 text-emerald-700';
+
+        pill.textContent = 'SAFE';
+
+        text.textContent = 'Systems Nominal';
+    }
+}
+
+async function fetchApexCommanderDecision() {
+
+    addLogLine(
+        "🧠 Requesting global triage from Apex Commander...",
+        "info"
+    );
+
+    try {
+
+        const res = await fetch(
+            '/api/apex-commander',
+            { method: 'POST' }
+        );
+
+        const data = await res.json();
+
+        renderApexCommanderOutput(data);
+
+    } catch (err) {
+
+        addLogLine(
+            "Apex Commander evaluation failed.",
+            "warning"
+        );
+    }
+}
+
+function renderApexCommanderOutput(plan) {
+
+    const priorityList =
+        document.getElementById('ai-priority-list');
+
+    const routesList =
+        document.getElementById('ai-routes-list');
+
+    const citizenList =
+        document.getElementById('ai-citizen-list');
+
+    // PRIORITIES
+
+    priorityList.innerHTML = `
+        <div class="space-y-3">
+
+            ${(plan.city_wide_priority_execution || []).map(item => `
+                
+                <div class="bg-slate-800 border border-slate-700 rounded-2xl p-4 leading-relaxed text-sm text-slate-100">
+                    ${item}
+                </div>
+
+            `).join('')}
+
+        </div>
+    `;
+
+    // ROUTES
+
+    routesList.innerHTML = `
+        
+        <div class="space-y-5">
+
+            <div>
+
+                <div class="text-rose-400 text-xs font-bold tracking-wider mb-2 uppercase">
+                    Blocked Routes
+                </div>
+
+                <div class="space-y-2">
+
+                    ${(plan.blocked_routes || []).map(route => `
+                        
+                        <div class="bg-rose-950/30 border border-rose-800 rounded-xl p-3 text-sm leading-relaxed text-rose-100">
+                            ${route}
+                        </div>
+
+                    `).join('')}
+
+                </div>
+
+            </div>
+
+            <div>
+
+                <div class="text-emerald-400 text-xs font-bold tracking-wider mb-2 uppercase">
+                    Approved Evacuation Routes
+                </div>
+
+                <div class="space-y-2">
+
+                    ${(plan.approved_evacuation_routes || []).map(route => `
+                        
+                        <div class="bg-emerald-950/30 border border-emerald-800 rounded-xl p-3 text-sm leading-relaxed text-emerald-100">
+                            ${route}
+                        </div>
+
+                    `).join('')}
+
+                </div>
+
+            </div>
+
+        </div>
+    `;
+
+    // CITIZEN MESSAGE
+
+    citizenList.innerHTML = `
+        
+        <div class="bg-emerald-950/30 border border-emerald-800 rounded-2xl p-5 text-sm text-emerald-50 leading-relaxed">
+
+            ${plan.citizen_broadcast || 'No active broadcast'}
+
+        </div>
+    `;
+
+    addLogLine(
+        "Apex Commander applied new city directives",
+        "success"
+    );
+}
+
+async function initializeDashboard() {
+
+    initializeTailwind();
+
+    renderAgentSteps();
+
+    initializeMap();
+
+    await refreshDashboard();
+
+    connectRealtimePipeline();
+
+    window.runSimulationCycle = async function() {
+
+        addLogLine(
+            "🚀 Starting full simulation cycle...",
+            "info"
+        );
+
+        try {
+
+            const res = await fetch(
+                '/api/run-simulation-cycle',
+                {
+                    method: 'POST'
+                }
+            );
+
+            const data = await res.json();
+
+            console.log(data);
+
+            if (data.success) {
+
+                addLogLine(
+                    `✅ Simulation complete`,
+                    "success"
+                );
+
+                await refreshDashboard();
+
+                await fetchApexCommanderDecision();
+            }
+
+        } catch (err) {
+
+            console.error(err);
+
+            addLogLine(
+                "Simulation execution failed",
+                "warning"
+            );
+        }
+    };
+}
+
+window.closeModal = closeModal;
+
+window.onload = initializeDashboard;
+</script>
 </body>
 </html>
+<div onclick="event.stopImmediatePropagation()" class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden">
+    <div id="modal-content"></div>
+</div>

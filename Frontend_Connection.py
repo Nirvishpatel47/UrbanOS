@@ -236,6 +236,7 @@ async def run_simulation_cycle(mode: str = "test"):
         processed_zones = []
         logger.info(f"Processing {len(GANDHINAGAR_ZONES)} zones (mode={mode})...")
 
+        #Use asyncio for parellel processing. For now it is linear. Complexity O(n).
         for zone_name in GANDHINAGAR_ZONES.keys():
             if zone_name in metrics_map:
                 metrics = metrics_map[zone_name]

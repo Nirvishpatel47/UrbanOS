@@ -17,25 +17,25 @@ GANDHINAGAR_ZONES = {
     "Sector_10_VidhanSabha": {"lat": 23.2233, "lon": 72.6492},
     "Sector_11_Commercial":  {"lat": 23.2251, "lon": 72.6410},
     "Sector_14_CapitalRwy":  {"lat": 23.2347, "lon": 72.6300},
-    "Sector_17_Commercial":  {"lat": 23.2272, "lon": 72.6525},
-    "Sector_21_Market":      {"lat": 23.2356, "lon": 72.6567},
-    "Sector_24_Residential": {"lat": 23.2450, "lon": 72.6530},
-    "Sector_28_GIDC":        {"lat": 23.2562, "lon": 72.6681},
-    "Sector_30_Periphery":   {"lat": 23.2625, "lon": 72.6710},
+    # "Sector_17_Commercial":  {"lat": 23.2272, "lon": 72.6525},
+    # "Sector_21_Market":      {"lat": 23.2356, "lon": 72.6567},
+    # "Sector_24_Residential": {"lat": 23.2450, "lon": 72.6530},
+    # "Sector_28_GIDC":        {"lat": 23.2562, "lon": 72.6681},
+    # "Sector_30_Periphery":   {"lat": 23.2625, "lon": 72.6710},
     
-    # # Outer Tech & Education Hubs
-    "Infocity_TechPark":     {"lat": 23.1915, "lon": 72.6308},
-    "GIFT_City_FinTech":     {"lat": 23.1675, "lon": 72.6792},
-    "PDPU_KnowledgeCorridor":{"lat": 23.1550, "lon": 72.6650},
-    "Koba_Institutional":    {"lat": 23.1365, "lon": 72.6280},
+    # # # Outer Tech & Education Hubs
+    # "Infocity_TechPark":     {"lat": 23.1915, "lon": 72.6308},
+    # "GIFT_City_FinTech":     {"lat": 23.1675, "lon": 72.6792},
+    # "PDPU_KnowledgeCorridor":{"lat": 23.1550, "lon": 72.6650},
+    # "Koba_Institutional":    {"lat": 23.1365, "lon": 72.6280},
 
-     # Peripheral / High-Density Suburbs
-    "Sargasan_Crossroad":    {"lat": 23.1932, "lon": 72.6138},
-    "Kudasan_Residential":   {"lat": 23.1850, "lon": 72.6250},
-    "Randesan_Development":  {"lat": 23.1720, "lon": 72.6350},
-    "Raysan_Corridor":       {"lat": 23.1780, "lon": 72.6450},
-    "Vavol_Residential":     {"lat": 23.2200, "lon": 72.6100},
-    "Adalaj_Heritage":       {"lat": 23.1667, "lon": 72.5800}
+    #  # Peripheral / High-Density Suburbs
+    # "Sargasan_Crossroad":    {"lat": 23.1932, "lon": 72.6138},
+    # "Kudasan_Residential":   {"lat": 23.1850, "lon": 72.6250},
+    # "Randesan_Development":  {"lat": 23.1720, "lon": 72.6350},
+    # "Raysan_Corridor":       {"lat": 23.1780, "lon": 72.6450},
+    # "Vavol_Residential":     {"lat": 23.2200, "lon": 72.6100},
+    # "Adalaj_Heritage":       {"lat": 23.1667, "lon": 72.5800}
 }
 
 OPENWEATHER_KEY = load_env_from_secret("WEATHER_API_KEY")
@@ -131,13 +131,16 @@ async def fetch_single_zone_packet(client: httpx.AsyncClient, name: str, lat: fl
         )
         
         panic_metrics = results[3]
+        congestion_level = results[1]
+        if congestion_level is None:
+            congestion_level = 1.0
 
         return {
             "zone_name": name,
             "latitude": lat,
             "longitude": lon,
             "rainfall": results[0],
-            "water_level": random.randint(0, 30),  
+            "water_level": random.randint(0, 5),  
             "congestion_level": round(results[1], 2),
             "aqi": results[2],
             "citizen_msg_volume": panic_metrics["citizen_msg_volume"],

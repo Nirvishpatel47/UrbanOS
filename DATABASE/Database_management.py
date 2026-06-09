@@ -182,18 +182,18 @@ class UrbanSQLConnection:
             logger.error("Database_management.UrbanSQLConnection.log_panic_message", e)
             return False
         
-    def get_panic_message_counts_near( self, lat: float, lon: float, radius_km: float = 3.0, window_minutes: int = 30 ) -> dict:
+    def get_panic_message_counts_near(self, lat: float, lon: float, radius_km: float = 3.0, window_minutes: int = 30) -> dict:
         """
         Returns panic message counts using Haversine formula.
         Calculates current vs previous time window properly.
         """
         try:
-            # Calculate intervals in Python (this is the fix)
             current_interval = f"{window_minutes} minutes"
             previous_interval = f"{window_minutes * 2} minutes"
 
             with self.engine.begin() as conn:
-                counts = conn.execute(text("""
+                # Execute count query
+                counts_result = conn.execute(text("""
                     SELECT 
                         COUNT(*) FILTER (
                             WHERE created_at >= NOW() - INTERVAL :current_interval
@@ -221,34 +221,50 @@ class UrbanSQLConnection:
                     "current_interval": current_interval,
                     "previous_interval": previous_interval
                 })
+                
+                row = counts_result.fetchone()
+                if row:
+                    current_window = row[0] if row[0] is not None else 0
+                    previous_window = row[1] if row[1] is not None else 0
+                else:
+                    current_window = 0
+                    previous_window = 0
 
-                messages = conn.execute(text("""
-                SELECT message
-                FROM panic_index
-                WHERE message IS NOT NULL
-                AND created_at >= NOW() - INTERVAL :current_interval
-                AND (
-                    6371 * 2 * ASIN(
-                        SQRT(
-                            POWER(SIN(RADIANS(latitude - :lat) / 2), 2) +
-                            COS(RADIANS(:lat)) * COS(RADIANS(latitude)) *
-                            POWER(SIN(RADIANS(longitude - :lon) / 2), 2)
+                # Fetch messages (this part was correct)
+                messages_result = conn.execute(text("""
+                    SELECT message
+                    FROM panic_index
+                    WHERE message IS NOT NULL
+                    AND created_at >= NOW() - INTERVAL :current_interval
+                    AND (
+                        6371 * 2 * ASIN(
+                            SQRT(
+                                POWER(SIN(RADIANS(latitude - :lat) / 2), 2) +
+                                COS(RADIANS(:lat)) * COS(RADIANS(latitude)) *
+                                POWER(SIN(RADIANS(longitude - :lon) / 2), 2)
+                            )
                         )
-                    )
-                ) <= :radius_km
-                LIMIT 200
-            """), {
-                "lat": lat,
-                "lon": lon,
-                "radius_km": radius_km,
-                "current_interval": current_interval
-            }).fetchall()
-            return {"current_window": counts[0] or 0, "previous_window": counts[1] or 0, "messages": [m[0] for m in messages if m[0]]}
+                    ) <= :radius_km
+                    LIMIT 200
+                """), {
+                    "lat": lat,
+                    "lon": lon,
+                    "radius_km": radius_km,
+                    "current_interval": current_interval
+                })
+                
+                messages = messages_result.fetchall()
+                message_texts = [m[0] for m in messages if m[0] and len(m) > 0]
+
+                return {
+                    "current_window": current_window,
+                    "previous_window": previous_window,
+                    "messages": message_texts
+                }
 
         except Exception as e:
             logger.error("Database_management.UrbanSQLConnection.get_panic_message_counts_near", e)
             return {"current_window": 0, "previous_window": 0, "messages": []}
-
 
 class UrbanRedisCacheManager:
     def __init__(self):
